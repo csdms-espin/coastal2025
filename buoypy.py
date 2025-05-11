@@ -570,7 +570,7 @@ class historic_data:
 
             new_df = self.get_stand_meteo(link=L)
             print('Appending data from: ' + L)
-            df = df.append(new_df)
+            df = pd.concat([df, new_df])
 
         return df
 
