@@ -1,6 +1,6 @@
 **Authors:**
-Mary Bryan Barksdale
-Connor Broaddus
-Emily Huffman
-Connor Broaddus
+Mary Bryan Barksdale,
+Roya Sahraei,
+Emily Huffman,
+Connor Broaddus,
 Ryan McCune
