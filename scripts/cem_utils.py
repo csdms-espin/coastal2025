@@ -1,59 +1,7 @@
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import path
-import numpy as np
-
-def shorelinetogrid(x, y, dx, dy, plotdata=True):
-    """ function to convert xy shoreline to gridded elevation for input to CEM
-        takes arrays of x and y in UTM or lat lon values. Assumes a Dean Profile.
-        Will plot output unless specified plotdata=False
-            """
-    # build grid
-    # find the smallest and largest x's and y's to initialize grid boundaries
-    x0 = int(np.ceil(min(x) / dx) * dx)
-    y0 = int(np.ceil(min(y) / dy) * dy)
-    x1 = x0 + int(np.ceil((max(x) - min(x)) / dx) * dx - 2 * dx)  # add total length of x to origin x
-    y1 = y0 + int(np.ceil((max(y) - min(y)) / dy) * dy + 5000)
-
-    # create mesh grid of x and y
-    [xg, yg] = np.meshgrid(list(range(x0, x1, dx)), list(range(y0, y1, dy)), sparse=False, indexing='ij')
-
-    # generate bathy using dean profile
-    surf_width = 1000
-    A = 0.1
-    landmax = 1
-    rng = 100000
-    zg = np.zeros_like(xg)
-    dist = np.zeros_like(xg)
-
-    for i in range(0, xg.shape[1]):
-        for j in range(0, xg.shape[0]):
-            inrange = (abs(x - xg[j, i]) < rng) & (abs(y - yg[j, i]) < rng);
-            r = np.zeros_like(x);
-            r[inrange] = (x[inrange] - xg[j, i]) ** 2 + (y[inrange] - yg[j, i]) ** 2;
-            r[~inrange] = 1.e10;
-            # Compute closest grid cell
-            value = min(r);
-            dist[j, i] = np.sqrt(value);
-            zg[j, i] = -A * (dist[j, i]) ** (2 / 3);
-
-    p = path.Path(np.transpose([x, y]))
-    IN = p.contains_points(np.transpose([xg.flatten(), yg.flatten()]))
-    IN = IN.reshape(xg.shape)
-    zg[IN] = (min(A * (dist[IN]) ** (2 / 3))) + 1
-    zg = zg * -1
-    if plotdata == True:
-        M,N = zg.shape
-        s = M/N
-        plt.figure(figsize=(int(s*8),7))
-        Bathy = plt.contourf(xg, yg, zg, cmap=plt.cm.GnBu)
-        cbar = plt.colorbar(Bathy)
-        cbar.ax.set_ylabel('Water Depth (m)', fontsize=20, rotation=-90, labelpad=30)
-        plt.xlabel('Eastings', fontsize=20)
-        plt.ylabel('Northings', fontsize=20)
-        plt.tick_params('both', labelsize=15)
-        cbar.ax.tick_params('y', labelsize=15)
-        Shore = plt.plot(x, y, 'k')
-    return xg, yg, zg
+from IPython.display import clear_output
 
 def plotmeteo(X):
     fig, axes = plt.subplots(2, sharex=True);
@@ -62,6 +10,83 @@ def plotmeteo(X):
     axes[0].set_ylabel('Wave Height (m)', fontsize=12);
     axes[1].set_ylabel('Dominant Period (s)', fontsize=12);
     axes[1].set_xlabel('');
+
+def fill_gaps(x, y, max_gap):
+    x = np.array(x)
+    y = np.array(y)
+    
+    x_filled = []
+    y_filled = []
+
+    for i in range(len(x) - 1):
+        # Always include the current point
+        x_filled.append(x[i])
+        y_filled.append(y[i])
+
+        # Compute the gap
+        gap = x[i+1] - x[i]
+
+        if gap > max_gap:
+            # Number of new points to insert
+            num_new = int(np.floor(gap / max_gap))
+
+            # Generate new x values
+            new_x = np.linspace(x[i], x[i+1], num=num_new+2)[1:-1]
+            new_y = np.linspace(y[i], y[i+1], num=num_new+2)[1:-1]
+
+            x_filled.extend(new_x)
+            y_filled.extend(new_y)
+
+    # Don't forget the last point
+    x_filled.append(x[-1])
+    y_filled.append(y[-1])
+
+    return np.array(x_filled), np.array(y_filled)
+
+def shoreline_to_grid(x, y, dx, dy, plotdata=True):
+    """ function to convert xy shoreline to gridded elevation for input to CEM
+        takes arrays of x and y in UTM or lat lon values. Assumes a Dean Profile.
+        Will plot output unless specified plotdata=False
+            """
+    ##### build grid
+    # find the smallest and largest x's and y's to initialize grid boundaries
+    x0 = int(np.ceil(min(x) / dx) * dx) # lower left x values, rounded to 100
+    y0 = int(np.ceil(min(y) / dy) * dy)
+    x1 = x0 + int(np.ceil((max(x) - min(x)) / dx) * dx - 2 * dx)  # add total length of x to origin x
+    y1 = y0 + int(np.ceil((max(y) - min(y)) / dy) * dy + 5000)
+    # create mesh grid of x and y
+   # [xg, yg] = np.meshgrid(list(range(x0, x1, dx)), list(range(y0-2000, y1, dy)), sparse=False, indexing='ij')
+    [xg, yg] = np.meshgrid(np.linspace(x0, x1, dx), np.linspace(y0-2000, y1, dy), sparse=False, indexing='ij')
+
+    return xg, yg
+
+def create_dean_bathy(x,y,xg,yg,pad,A=0.1,b=(2/3),beachelev=1):
+    # Flatten grid points
+    grid_points = np.column_stack((xg.ravel(), yg.ravel()))
+    # Build KDTree from shoreline
+    shoreline_points = np.column_stack((x, y)) #reshape x,y to handshake with cKDTree class
+    tree = cKDTree(shoreline_points) #instantiate
+    # Query the nearest shoreline point for each grid cell
+    dist, _ = tree.query(grid_points) #use the query method in the cKDTree class
+    # Reshape distances back to grid shape
+    dist_map = dist.reshape(xg.shape)
+    # Allocate storage for z array
+    zg = np.zeros_like(xg)
+    # Compute dean profile
+    zg = A * dist_map ** b
+    # Set the beach elevation
+    # # smooth out to create gradient
+    neighs = np.ones([10,10])
+    total = (10**2)
+    zg = signal.convolve2d(zg,neighs/total,mode='same',boundary='symm')
+
+    for i in range(zg.shape[0]): #for all columns i
+        # find max row index where dist_map==0
+        j = np.argmin(dist_map[i, :])
+        zg[i, 0:j]= -beachelev
+    # Output the new bathymetry
+    zg=-zg.T.copy()
+    return zg, dist_map
 
 def plot_coast(domain,dx,dy):
     '''Plot the coastline.
@@ -92,3 +117,136 @@ def plot_coast(domain,dx,dy):
     ax.set_xlabel('Along shore (km)',fontsize=20)
     ax.set_ylabel('Cross shore (km)',fontsize=20)
     ax.tick_params('both',labelsize=15)
+
+def find_shelf_slope(domain,pad=20): #same pad as above
+    h = lambda x: 0.1*x**(2/3) ## depth equation
+    profile = np.copy(domain)[:,0] ## find a nice straight column in the domain...
+    ## whose depth gradient is towards the top of the domain
+    x = np.arange(len(profile))*dx ## the off shore coords in [meters]
+    ## find the shoreline edge and approximate the gradient using the equation from the previous notebook:
+    x0 = x[pad] ## edge of beach--defined by the pad from previous step if that was used
+    xf = x[-1] ## open ocean depth
+    return (h(xf)-h(x0))/(xf-x0)
+
+def initialize_models(params,domain,cem,waves,set_land):
+    '''
+    Inputs:
+    ------
+    
+    -params = parameter dictionary
+    
+    -domain = initial elevation domain
+        ---> domain values in (-inifinity,1] 
+                -->> 1 = land, <1 = water
+                
+    -cem,waves = the imported models 
+        --->ex: cem = pymt.Cem()
+            
+    '''
+    p = params
+    
+    N,M = domain.shape
+
+    args = cem.setup( number_of_rows = N , number_of_cols = M, 
+                  grid_spacing = p['grid_spacing'] ,  shelf_slope = p['shelf_slope'] , 
+                  shoreface_depth = p['shoreface_depth'] , shoreface_slope = p['shoreface_slope']
+                )
+
+    waves.initialize(*waves.setup())
+    cem.initialize(*args)
+    
+    waves.set_value('sea_surface_water_wave__height', p['wave_height']);
+    waves.set_value('sea_surface_water_wave__period',p['wave_period']);
+    waves.set_value('sea_shoreline_wave~incoming~deepwater__ashton_et_al_approach_angle_highness_parameter',
+                   p['wave_angle_highness']);
+    waves.set_value('sea_shoreline_wave~incoming~deepwater__ashton_et_al_approach_angle_asymmetry_parameter',
+                   p['wave_angle_asymmetry']);
+
+    if set_land==True: #if need set land elevation; 'False' used default
+        cem.set_value('land_surface__elevation',domain.flatten());
+    cem.set_value('model__time_step', float(p['model__time_step']));
+
+def run_model_loop(time_years, domain ,cem ,waves, qs_3,animate,update_ani_years):
+    '''Loop to run the cem-waves models.
+    This loop only couples the wave angles and will need to be changed to add additional coupling.
+    It also assumes static variables such as sediment input and would need modification to update such variables.
+    
+    Inputs:
+    ------
+    
+    -time_years = time you want to run the model in years
+    
+    -domain = initial elevation domain
+        ---> domain values in (-inifinity,1] 
+                -->> 1 = land, <1 = water
+                
+    -cem,waves = the imported models 
+        --->ex: cem = pymt.Cem()
+        
+    '''
+
+    alpha = 'sea_surface_water_wave__azimuth_angle_of_opposite_of_phase_velocity'
+    update_ani = int(365*update_ani_years/cem.get_value('model__time_step'))
+    T = int(365*time_years/cem.get_value('model__time_step'))
+    dx,dy = cem.grid_spacing(cem.var_grid('sea_water__depth'))
+    for time in range(T):
+        waves.update()
+        angle = waves.get_value(alpha)
+        cem.set_value(alpha, angle)
+        cem.set_value("land_surface_water_sediment~bedload__mass_flow_rate", np.array(qs_3[:,:,time]))
+        cem.update()
+        if animate:
+            if time%update_ani == 0 or time==T-1:
+                clear_output(wait=True)
+                plot_coast(cem.get_value('land_surface__elevation').reshape(domain.shape),dx,dy)
+                plt.title('Time : '+ str(round((time*cem.get_value('model__time_step')/365)[0],1)) +' years',fontsize=20)
+                plt.show()
+
+        else:
+            clear_output(wait=True)
+            print('Time Step: ',time, ' days')
+
+def extract_raster_shoreline(land):
+    gradx, grady = np.gradient(land)
+    G = np.sqrt(gradx**2 + grady**2)
+
+    # Binary mask for land
+    landbin = np.zeros_like(land)
+    landbin[land > 0] = 1
+
+    # Newline where gradient > 0 and landbin == 1
+    shoreline_map = np.zeros_like(land)
+    shoreline_map[(G > 0) & (landbin == 1)] = 1
+    return shoreline_map
+
+def extract_vector_shoreline(land,window=1):
+    gradx, grady = np.gradient(land)
+    G = np.sqrt(gradx**2 + grady**2)
+
+    # Binary mask for land
+    landbin = np.zeros_like(land)
+    landbin[land > 0] = 1
+
+    # Newline where gradient > 0 and landbin == 1
+    shoreline_map = np.zeros_like(land)
+    shoreline_map[(G > 0) & (landbin == 1)] = 1
+
+    xinds,yinds = np.where(shoreline_map==1)
+
+    yinds,xinds = np.nonzero(shoreline_map)
+    shoreline_x = xg[xinds,yinds]
+    shoreline_y = yg[xinds,yinds]
+
+    # Stack and sort by y (column), then x (row)
+    sorted_indices = np.lexsort((shoreline_y, shoreline_x))
+
+    # Apply the sorted order
+    x_sorted = shoreline_x[sorted_indices]
+    y_sorted = shoreline_y[sorted_indices]
+
+    # Spline fit (not working right now?)
+    # from scipy.interpolate import UnivariateSpline
+    # spline = UnivariateSpline(x_sorted, y_sorted, s=window)  # `s` is the smoothing factor
+    # y_smooth = spline(x_sorted)
+    
+    return x_sorted,y_sorted
