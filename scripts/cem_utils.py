@@ -327,7 +327,7 @@ def extract_vector_shoreline(land,window=1):
     
     return x_sorted,y_sorted
 
-def vid_model_loop(time_years, domain ,cem ,waves, qs_3,animate,update_ani_years):
+def vid_model_loop(time_years, domain ,cem ,waves, qs_3,animate,update_ani_years, png_dir):
     '''Loop to run the cem-waves models.
     This loop only couples the wave angles and will need to be changed to add additional coupling.
     It also assumes static variables such as sediment input and would need modification to update such variables.
@@ -357,7 +357,7 @@ def vid_model_loop(time_years, domain ,cem ,waves, qs_3,animate,update_ani_years
                 clear_output(wait=True)
                 plot_coast(cem.get_value('land_surface__elevation').reshape(domain.shape),dx,dy)
                 plt.title('Time : '+ str(round((time*cem.get_value('model__time_step')/365)[0],1)) +' years',fontsize=20)
-                plt.savefig('cem_plots/' + str((round((time*cem.get_value('model__time_step')/365)[0],1))/1000) + '.png') #turn on when creating animation gif
+                plt.savefig(png_dir + str((round((time*cem.get_value('model__time_step')/365)[0],1))/1000) + '.png') #turn on when creating animation gif
         else:
             clear_output(wait=True)
             print('Time Step: ',time, ' days')
