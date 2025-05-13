@@ -1,8 +1,0 @@
-bmi-topography:
-  dem_type: 'SRTMGL1'
-  south: 42.607671978863806
-  north: 43.41466043332332
-  west: -124.63686378860638
-  east: -123.40175219732774
-  output_format: GTiff
-  cache_dir: "./cache_Coquille"
