@@ -54,6 +54,8 @@ def compute_wave_parameters(station,year_range,shore_rotation_deg_CC):
     left_wave_inds = left_wave_inds[0]
     A = left_wave_inds.size / shore_normal_dirs.size
 
+    plt.hist(shore_normal_dirs, bins=[0, 45, 90, 270, 315, 360])
+    
     return Hs,Tp,Dir,A,U
 
 def plotmeteo(X):
@@ -465,3 +467,4 @@ def shorelinetogrid(x, y, dx, dy, plotdata=True):
         cbar.ax.tick_params('y', labelsize=15)
         Shore = plt.plot(x, y, 'k')
     return xg, yg, zg
+
