@@ -327,6 +327,41 @@ def extract_vector_shoreline(land,window=1):
     
     return x_sorted,y_sorted
 
+def vid_model_loop(time_years, domain ,cem ,waves, qs_3,animate,update_ani_years):
+    '''Loop to run the cem-waves models.
+    This loop only couples the wave angles and will need to be changed to add additional coupling.
+    It also assumes static variables such as sediment input and would need modification to update such variables.
+    Inputs:
+    ------
+    -time_years = time you want to run the model in years
+    -domain = initial elevation domain
+        ---> domain values in (-inifinity,1]
+                -->> 1 = land, <1 = water
+    -cem,waves = the imported models
+        --->ex: cem = pymt.Cem()
+    '''
+    alpha = 'sea_surface_water_wave__azimuth_angle_of_opposite_of_phase_velocity'
+    update_ani = int(365*update_ani_years/cem.get_value('model__time_step'))
+    T = int(365*time_years/cem.get_value('model__time_step'))
+    dx,dy = cem.grid_spacing(cem.var_grid('sea_water__depth'))
+    i=0
+    for time in range(T):
+        waves.update()
+        angle = waves.get_value(alpha)
+        cem.set_value(alpha, angle)
+        cem.set_value("land_surface_water_sediment~bedload__mass_flow_rate", np.array(qs_3[:,:,time]))
+        cem.update()
+        if animate:
+            if time%update_ani == 0 or time==T-1:
+                i+=1
+                clear_output(wait=True)
+                plot_coast(cem.get_value('land_surface__elevation').reshape(domain.shape),dx,dy)
+                plt.title('Time : '+ str(round((time*cem.get_value('model__time_step')/365)[0],1)) +' years',fontsize=20)
+                plt.savefig('cem_plots/' + str((round((time*cem.get_value('model__time_step')/365)[0],1))/1000) + '.png') #turn on when creating animation gif
+        else:
+            clear_output(wait=True)
+            print('Time Step: ',time, ' days')
+
 
 ##############################################
 # Old group's shoreline to CEM domain functions
